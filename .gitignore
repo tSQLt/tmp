@@ -1,0 +1,11 @@
+/_UpgradeReport_Files
+/Build/output
+/Build/temp
+/*.ssms_suo
+/*.sqlsuo
+/tSQLtCLR/tSQLtCLR/obj
+/tSQLtCLR/tSQLtCLR/bin
+/tSQLtCLR/tSQLtKey/obj
+/tSQLtCLR/tSQLtKey/bin
+/tSQLtCLR/tSQLtTestUtilCLR/obj
+/tSQLtCLR/tSQLtTestUtilCLR/bin
