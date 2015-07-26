@@ -1,6 +1,5 @@
 EXEC tSQLt.NewTestClass 'Run_Methods_Tests';
 GO
-
 CREATE PROC Run_Methods_Tests.[test Run truncates TestResult table]
 AS
 BEGIN
@@ -374,7 +373,7 @@ BEGIN
 END;
 GO
 
-CREATE PROCEDURE Run_Methods_Tests.[test RunWithXmlResults calls Private_Run with XmlTestResultFormatter]
+CREATE PROCEDURE Run_Methods_Tests.[test RunWithXmlResults calls Private_Run with XmlResultFormatter]
 AS
 BEGIN
   EXEC tSQLt.SpyProcedure 'tSQLt.Private_Run';
@@ -701,7 +700,147 @@ BEGIN
     EXEC tSQLt.AssertEqualsTable '#expected','#actual';
 END;
 GO
+CREATE PROC Run_Methods_Tests.[test XmlResultFormatter includes duration for each test]
+AS
+BEGIN
+    EXEC tSQLt.FakeTable @TableName = 'tSQLt.TestResult';
 
+    EXEC tSQLt.SpyProcedure 'tSQLt.Private_PrintXML';
+
+    DECLARE @XML XML;
+
+    DELETE FROM tSQLt.TestResult;
+    INSERT INTO tSQLt.TestResult (Class, TestCase, Result, TestStartTime, TestEndTime)
+    VALUES ('MyTestClass1', 'testA', 'Failure', '2015-07-24T00:00:01.000', '2015-07-24T00:00:01.138');
+    INSERT INTO tSQLt.TestResult (Class, TestCase, Result, TestStartTime, TestEndTime)
+    VALUES ('MyTestClass1', 'testB', 'Success', '2015-07-24T00:00:01.000', '2015-07-24T00:00:02.633');
+    INSERT INTO tSQLt.TestResult (Class, TestCase, Result, TestStartTime, TestEndTime)
+    VALUES ('MyTestClass2', 'testC', 'Failure', '2015-07-24T00:00:01.111', '2015-08-17T20:31:24.758');
+    INSERT INTO tSQLt.TestResult (Class, TestCase, Result, TestStartTime, TestEndTime)
+    VALUES ('MyTestClass2', 'testD', 'Error', '2015-07-24T00:00:01.666', '2015-07-24T00:00:01.669');
+    
+    EXEC tSQLt.XmlResultFormatter;
+    
+    SELECT @XML = CAST(Message AS XML) FROM tSQLt.Private_PrintXML_SpyProcedureLog;
+
+    SELECT 
+      TestCase.value('../@name','NVARCHAR(MAX)') AS Class,
+      TestCase.value('@name','NVARCHAR(MAX)') AS TestCase,
+      TestCase.value('@time','NVARCHAR(MAX)') AS Time
+    INTO #actual
+    FROM @XML.nodes('/testsuites/testsuite/testcase') X(TestCase);
+    
+    
+    SELECT TOP(0) *
+    INTO #Expected
+    FROM #Actual;
+    
+    INSERT INTO #Expected
+    VALUES('MyTestClass1', 'testA', '0.136');
+    INSERT INTO #Expected
+    VALUES('MyTestClass1', 'testB', '1.633');
+    INSERT INTO #Expected
+    VALUES('MyTestClass2', 'testC', '2147483.646');
+    INSERT INTO #Expected
+    VALUES('MyTestClass2', 'testD', '0.003');
+
+    EXEC tSQLt.AssertEqualsTable '#expected','#actual';
+END;
+GO
+CREATE PROC Run_Methods_Tests.[test XmlResultFormatter includes start time and total duration per class]
+AS
+BEGIN
+    EXEC tSQLt.FakeTable @TableName = 'tSQLt.TestResult';
+
+    EXEC tSQLt.SpyProcedure 'tSQLt.Private_PrintXML';
+
+    DECLARE @XML XML;
+
+    DELETE FROM tSQLt.TestResult;
+    INSERT INTO tSQLt.TestResult (Class, TestCase, Result, TestStartTime, TestEndTime)
+    VALUES ('MyTestClass1', 'testA', 'Failure', '2015-07-24T00:00:01.000', '2015-07-24T00:00:01.138');
+    INSERT INTO tSQLt.TestResult (Class, TestCase, Result, TestStartTime, TestEndTime)
+    VALUES ('MyTestClass1', 'testB', 'Success', '2015-07-24T00:00:02.000', '2015-07-24T00:00:02.633');
+    INSERT INTO tSQLt.TestResult (Class, TestCase, Result, TestStartTime, TestEndTime)
+    VALUES ('MyTestClass2', 'testC', 'Failure', '2015-07-24T00:00:01.111', '2015-07-24T20:31:24.758');
+    INSERT INTO tSQLt.TestResult (Class, TestCase, Result, TestStartTime, TestEndTime)
+    VALUES ('MyTestClass2', 'testD', 'Error', '2015-07-24T00:00:00.667', '2015-07-24T00:00:01.055');
+    
+    EXEC tSQLt.XmlResultFormatter;
+    
+    SELECT @XML = CAST(Message AS XML) FROM tSQLt.Private_PrintXML_SpyProcedureLog;
+   
+    SELECT 
+      TestCase.value('@name','NVARCHAR(MAX)') AS TestCase,
+      TestCase.value('@timestamp','NVARCHAR(MAX)') AS Timestamp,
+      TestCase.value('@time','NVARCHAR(MAX)') AS Time
+    INTO #actual
+    FROM @XML.nodes('/testsuites/testsuite') X(TestCase);
+    
+    
+    SELECT TOP(0) *
+    INTO #Expected
+    FROM #Actual;
+    
+    INSERT INTO #Expected
+    VALUES('MyTestClass1', '2015-07-24T00:00:01', '1.633');
+    INSERT INTO #Expected
+    VALUES('MyTestClass2', '2015-07-24T00:00:00', '73884.090');
+
+    EXEC tSQLt.AssertEqualsTable '#expected','#actual';
+END;
+GO
+CREATE PROC Run_Methods_Tests.[test XmlResultFormatter includes other required fields]
+AS
+BEGIN
+    EXEC tSQLt.FakeTable @TableName = 'tSQLt.TestResult';
+
+    EXEC tSQLt.SpyProcedure 'tSQLt.Private_PrintXML';
+
+    DECLARE @XML XML;
+
+    DELETE FROM tSQLt.TestResult;
+    INSERT INTO tSQLt.TestResult (Id,Class, TestCase, Result)
+    VALUES (1,'MyTestClass1', 'testA', 'Failure');
+    INSERT INTO tSQLt.TestResult (Id,Class, TestCase, Result)
+    VALUES (2,'MyTestClass1', 'testB', 'Success');
+    INSERT INTO tSQLt.TestResult (Id,Class, TestCase, Result)
+    VALUES (3,'MyTestClass2', 'testC', 'Failure');
+    INSERT INTO tSQLt.TestResult (Id,Class, TestCase, Result)
+    VALUES (4,'MyTestClass2', 'testD', 'Error');
+    
+    EXEC tSQLt.XmlResultFormatter;
+    
+    SELECT @XML = CAST(Message AS XML) FROM tSQLt.Private_PrintXML_SpyProcedureLog;
+
+    SELECT 
+      TestCase.value('../@hostname','NVARCHAR(MAX)') AS Hostname,
+      TestCase.value('../@id','NVARCHAR(MAX)') AS id,
+      TestCase.value('../@package','NVARCHAR(MAX)') AS package,
+      TestCase.value('@name','NVARCHAR(MAX)') AS Testname,
+      TestCase.value('failure[1]/@type','NVARCHAR(MAX)') AS FailureType,
+      TestCase.value('error[1]/@type','NVARCHAR(MAX)') AS ErrorType
+    INTO #actual
+    FROM @XML.nodes('/testsuites/testsuite/testcase') X(TestCase);
+    
+    
+    SELECT TOP(0) *
+    INTO #Expected
+    FROM #Actual;
+    
+    DECLARE @ServerName NVARCHAR(MAX); SET @ServerName = CAST(SERVERPROPERTY('ServerName') AS NVARCHAR(MAX));
+    INSERT INTO #Expected
+    VALUES(@ServerName,1,'tSQLt','testA','tSQLt.Fail',NULL);
+    INSERT INTO #Expected
+    VALUES(@ServerName,1,'tSQLt','testB',NULL,NULL);
+    INSERT INTO #Expected
+    VALUES(@ServerName,2,'tSQLt','testC','tSQLt.Fail',NULL);
+    INSERT INTO #Expected
+    VALUES(@ServerName,2,'tSQLt','testD',NULL,'SQL Error');
+
+    EXEC tSQLt.AssertEqualsTable '#expected','#actual';
+END;
+GO
 CREATE PROCEDURE Run_Methods_Tests.[test RunWithNullResults calls Private_Run with NullTestResultFormatter]
 AS
 BEGIN
@@ -1254,29 +1393,29 @@ BEGIN
 
     EXEC tSQLt.CaptureOutput @command='EXEC tSQLt.Private_Run ''innertest.testMe'', ''tSQLt.NullTestResultFormatter'';';
 
-    DECLARE @actual DATETIME2;
-    DECLARE @after DATETIME2;
-    DECLARE @before DATETIME2;
+    DECLARE @actual DATETIME;
+    DECLARE @after DATETIME;
+    DECLARE @before DATETIME;
     
-    SET @before = SYSDATETIME();  
+    SET @before = GETDATE();  
     
     EXEC tSQLt.CaptureOutput @command='EXEC tSQLt.Private_Run ''innertest.testMe'', ''tSQLt.NullTestResultFormatter'';';
     
-    SET @after = SYSDATETIME();  
+    SET @after = GETDATE();  
     
     SELECT  @actual = TestStartTime
     FROM tSQLt.TestResult AS TR   
     
     DECLARE @msg NVARCHAR(MAX);
-    IF(@actual < @before OR @actual > DATEADD(MILLISECOND,-111,@after) OR @actual IS NULL)
+    IF(@actual < DATEADD(MILLISECOND,-9,@before) OR @actual > DATEADD(MILLISECOND,-102,@after) OR @actual IS NULL)
     BEGIN
       SET @msg = 
         'Expected:'+
-        CONVERT(NVARCHAR(MAX),@before,121)+
+        CONVERT(NVARCHAR(MAX),DATEADD(MILLISECOND,-9,@before),121)+
         ' <= '+
         ISNULL(CONVERT(NVARCHAR(MAX),@actual,121),'!NULL!')+
         ' <= '+
-        CONVERT(NVARCHAR(MAX),DATEADD(MILLISECOND,-111,@after),121);
+        CONVERT(NVARCHAR(MAX),DATEADD(MILLISECOND,-102,@after),121);
         EXEC tSQLt.Fail @msg;
     END;
 END;
@@ -1290,29 +1429,29 @@ BEGIN
 
     EXEC tSQLt.CaptureOutput @command='EXEC tSQLt.Private_Run ''innertest.testMe'', ''tSQLt.NullTestResultFormatter'';';
 
-    DECLARE @actual DATETIME2;
-    DECLARE @after DATETIME2;
-    DECLARE @before DATETIME2;
+    DECLARE @actual DATETIME;
+    DECLARE @after DATETIME;
+    DECLARE @before DATETIME;
     
-    SET @before = SYSDATETIME();  
+    SET @before = GETDATE();  
     
     EXEC tSQLt.CaptureOutput @command='EXEC tSQLt.Private_Run ''innertest.testMe'', ''tSQLt.NullTestResultFormatter'';';
     
-    SET @after = SYSDATETIME();  
+    SET @after = GETDATE();  
     
     SELECT  @actual = TestEndTime
     FROM tSQLt.TestResult AS TR   
     
     DECLARE @msg NVARCHAR(MAX);
-    IF(@actual < DATEADD(MILLISECOND,111,@before) OR @actual > @after OR @actual IS NULL)
+    IF(@actual < DATEADD(MILLISECOND,102,@before) OR @actual > DATEADD(MILLISECOND,9,@after) OR @actual IS NULL)
     BEGIN
       SET @msg = 
         'Expected:'+
-        CONVERT(NVARCHAR(MAX),@before,121)+
+        CONVERT(NVARCHAR(MAX),DATEADD(MILLISECOND,102,@before),121)+
         ' <= '+
         ISNULL(CONVERT(NVARCHAR(MAX),@actual,121),'!NULL!')+
         ' <= '+
-        CONVERT(NVARCHAR(MAX),DATEADD(MILLISECOND,-111,@after),121);
+        CONVERT(NVARCHAR(MAX),DATEADD(MILLISECOND,9,@after),121);
         EXEC tSQLt.Fail @msg;
     END;
 END;
@@ -1326,15 +1465,15 @@ BEGIN
 
     EXEC tSQLt.CaptureOutput @command='EXEC tSQLt.Private_Run ''innertest.testMe'', ''tSQLt.NullTestResultFormatter'';';
 
-    DECLARE @actual DATETIME2;
-    DECLARE @after DATETIME2;
-    DECLARE @before DATETIME2;
+    DECLARE @actual DATETIME;
+    DECLARE @after DATETIME;
+    DECLARE @before DATETIME;
     
-    SET @before = SYSDATETIME();  
+    SET @before = GETDATE();  
     
     EXEC tSQLt.CaptureOutput @command='EXEC tSQLt.Private_Run ''innertest.testMe'', ''tSQLt.NullTestResultFormatter'';';
     
-    SET @after = SYSDATETIME();  
+    SET @after = GETDATE();  
     
     SELECT  @actual = TestEndTime
     FROM tSQLt.TestResult AS TR   
